@@ -457,7 +457,14 @@ class gen_setup(Operator):
                 obj.location[0] = tm.loc_x
                 obj.location[1] = tm.loc_y
                 obj.location[2] = tm.loc_z
-        
+                
+                obj.rotation_euler[0] = 0
+                obj.rotation_euler[1] = 0
+                obj.rotation_euler[2] = 0
+                
+                obj.scale[0] = 1
+                obj.scale[1] = 1
+                obj.scale[2] = 1
         
         return {'FINISHED'}
 
