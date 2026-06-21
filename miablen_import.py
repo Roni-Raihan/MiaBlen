@@ -118,19 +118,17 @@ def baca_data(data, mf, baru = False):
     #mulai baca timeline
     data_timeline = data.get("timelines", None)
     if data_timeline:
+        existing_map = {t.id: t for t in mf.mif_timeline}
         for tm in data_timeline:
             id = tm.get("id", "")
             type = tm.get("type", "")
             
             #cek apakah sudah ada di property
-            if not baru and len(mf.mif_timeline) > 0:
-                mf_tm = None
-                for t in mf.mif_timeline:
-                    if id == t.id:
-                        mf_tm = t
-                        break
+            if not baru:
+                mf_tm = existing_map.get(id, None)
                 if not mf_tm:
                     mf_tm = mf.mif_timeline.add()
+                    existing_map[id] = mf_tm
             else:
                 mf_tm = mf.mif_timeline.add()
             
@@ -156,8 +154,16 @@ def baca_data(data, mf, baru = False):
                 mf_tm.part_name = ""
                 
             #bagian lainnya
-            mf_tm.parent_id = tm.get("parent", "root")
             mf_tm.template_id = tm.get("temp", "")
+            mf_tm.parent_id = tm.get("parent", "root")
+            mf_tm.parent_to_bend = tm.get("lock_bend", False)
+            
+            mf_tm.rot_point_kostum = tm.get("rot_point_custom", False)
+            rpc_loc = tm.get("rot_point", [0, 0, 0]) #yzx blender
+            mf_tm.rpk_loc_x = rpc_loc[2] / 16
+            mf_tm.rpk_loc_y = rpc_loc[0] / 16
+            mf_tm.rpk_loc_z = rpc_loc[1] / 16
+            
             mf_tm.part_tunggal = False
             mf_tm.usang = False
             
@@ -183,9 +189,9 @@ def baca_data(data, mf, baru = False):
                 loc_def_y = 0
                 loc_def_z = 0
                 
-            mf_tm.loc_x = loc_def_x / 16
-            mf_tm.loc_y = loc_def_y / 16
-            mf_tm.loc_z = loc_def_z / 16
+            mf_tm.loc_x = loc_def_x
+            mf_tm.loc_y = loc_def_y
+            mf_tm.loc_z = loc_def_z
                 
             if len(mf_tm.key_set) > 0:
                 mf_tm.key_set.clear()
@@ -298,7 +304,7 @@ class add_miafile(Operator, ImportHelper):
         af.cek_refres = False
         return {'FINISHED'}
     
-#~~~~ Ubah path ke file mi
+#~~~~ reload file mi
 class reload_miafile(Operator):
     """Reload"""
     bl_idname = "scene.reload_mif"
@@ -407,13 +413,36 @@ class pilih_folder_mineimator_mif(Operator):
         sp = scene.miablen_projects[scene.miablen_pilih_projects]
         sp.mi_lokasi = self.directory
         return {'FINISHED'}
+    
+#~~~~ Remove Invalid Timeline
+class hapus_usang(Operator):
+    """Remove Invalid Timeline Item"""
+    bl_idname = "scene.hapus_usang"
+    bl_label = "Remove Invalid Timeline Item"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        scene = context.scene
+        miablen_projects = scene.miablen_projects
+        
+        if not scene.miablen_pilih_projects > len(miablen_projects)-1:
+            mf = miablen_projects[scene.miablen_pilih_projects]
+            for i in reversed(range(len(mf.mif_timeline))):
+                if mf.mif_timeline[i].usang:
+                    mf.mif_timeline.remove(i)
+                    
+            urut_hirarki(mf)
+            if mf.mif_timeline_pilih > len(mf.mif_timeline) - 1:
+                mf.mif_timeline_pilih = max(0, len(mf.mif_timeline) - 1)
+        return {'FINISHED'}
 
 classes = [
     add_miafile,
     reload_miafile,
     ubah_miafile,
     pilih_folder_mineimator_pengaturan,
-    pilih_folder_mineimator_mif
+    pilih_folder_mineimator_mif,
+    hapus_usang
 ]
 
 def register():

@@ -77,6 +77,9 @@ def timeline_pilih_update(self, context):
     if self.mif_timeline_pilih > len(self.mif_timeline) - 1:
         return
     
+    if not context:
+        return
+    
     if context.mode != 'OBJECT':
         return
     
@@ -94,7 +97,7 @@ def timeline_pilih_update(self, context):
         bpy.ops.object.select_all(action='DESELECT')
         obj.select_set(True)
         context.view_layer.objects.active = obj
-    except zipfile.BadZipFile as e:
+    except Exception as e:
         print(f"{e}")
         return
 
@@ -128,6 +131,10 @@ class part_data(bpy.types.PropertyGroup):
     offset_bend: bpy.props.FloatProperty(name='Offset', default=0.0)
     type_bend: bpy.props.StringProperty(name='Type Bend', default='')
     
+    bend_invert_x: bpy.props.BoolProperty(name='Bend Invert X', default=False)
+    bend_invert_y: bpy.props.BoolProperty(name='Bend Invert Y', default=False)
+    bend_invert_z: bpy.props.BoolProperty(name='Bend Invert Z', default=False)
+    
 class state_data(bpy.types.PropertyGroup):
     name: bpy.props.StringProperty(name='Name', default='')
     nilai: bpy.props.StringProperty(name='Value', default='')
@@ -149,7 +156,19 @@ class mf_timeline(bpy.types.PropertyGroup):
     id: bpy.props.StringProperty(name='ID', default='')
     type: bpy.props.StringProperty(name='Type', default='')
     usang: bpy.props.BoolProperty(name='Usang', default=False)
+    
     parent_id: bpy.props.StringProperty(name='Parent', default='')
+    parent_to_bend: bpy.props.BoolProperty(name='Parent to Bend', default=False)
+    loc_ikut_parent: bpy.props.BoolProperty(name='Follow Parent Location', default=True)
+    rot_ikut_parent: bpy.props.BoolProperty(name='Follow Parent Rotation', default=True)
+    scale_ikut_parent: bpy.props.BoolProperty(name='Follow Parent Scale', default=True)
+    rot_point_ikut_parent: bpy.props.BoolProperty(name='Follow Parent Scale', default=False)
+    
+    rot_point_kostum: bpy.props.BoolProperty(name='Rotation Point Costume', default=False)
+    rpk_loc_x: bpy.props.FloatProperty(name='Rotation Point Costume Location X', default=0.0)
+    rpk_loc_y: bpy.props.FloatProperty(name='Rotation Point Costume Location y', default=0.0)
+    rpk_loc_z: bpy.props.FloatProperty(name='Rotation Point Costume Location z', default=0.0)
+    
     template_id: bpy.props.StringProperty(name='Template', default='')
     
     lihat_level: bpy.props.IntProperty(default=0)
@@ -163,6 +182,11 @@ class mf_timeline(bpy.types.PropertyGroup):
     bend_part: bpy.props.BoolProperty(name='Bend', default=False)
     offset_bend: bpy.props.FloatProperty(name='Offset', default=0.0)
     type_bend: bpy.props.StringProperty(name='Type Bend', default='')
+    
+    bend_invert_x: bpy.props.BoolProperty(name='Bend Invert X', default=False)
+    bend_invert_y: bpy.props.BoolProperty(name='Bend Invert Y', default=False)
+    bend_invert_z: bpy.props.BoolProperty(name='Bend Invert Z', default=False)
+    
     part_name: bpy.props.StringProperty(name='Name Part', default='')
     part_tunggal: bpy.props.BoolProperty(name='Tunggal', default=False)
     
@@ -172,12 +196,6 @@ class mf_timeline(bpy.types.PropertyGroup):
     loc_x: bpy.props.FloatProperty(name='Location X', default=0.0)
     loc_y: bpy.props.FloatProperty(name='Location y', default=0.0)
     loc_z: bpy.props.FloatProperty(name='Location z', default=0.0)
-    
-    loc_ikut_parent: bpy.props.BoolProperty(name='Follow Parent Location', default=True)
-    rot_ikut_parent: bpy.props.BoolProperty(name='Follow Parent Rotation', default=True)
-    scale_ikut_parent: bpy.props.BoolProperty(name='Follow Parent Scale', default=True)
-    
-    rot_point_ikut_parent: bpy.props.BoolProperty(name='Follow Parent Scale', default=False)
     
     invers_loc_x: bpy.props.FloatProperty(name='Invers Location X', default=0.0)
     invers_loc_y: bpy.props.FloatProperty(name='Invers Location Y', default=0.0)

@@ -76,33 +76,11 @@ class pindah_miafile_ke_bawah(Operator):
             miablen_projects.move(scene.miablen_pilih_projects, scene.miablen_pilih_projects+1)
             scene.miablen_pilih_projects += 1
         return {'FINISHED'}
-    
-#~~~~ Lihat parent
-class hapus_usang(Operator):
-    """Remove Invalid Timeline Item"""
-    bl_idname = "scene.hapus_usang"
-    bl_label = "Remove Invalid Timeline Item"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def execute(self, context):
-        scene = context.scene
-        miablen_projects = scene.miablen_projects
-        
-        if not scene.miablen_pilih_projects > len(miablen_projects)-1:
-            mf = miablen_projects[scene.miablen_pilih_projects]
-            for i in reversed(range(len(mf.mif_timeline))):
-                if mf.mif_timeline[i].usang:
-                    mf.mif_timeline.remove(i)
-                    
-            if mf.mif_timeline_pilih > len(mf.mif_timeline) - 1:
-                mf.mif_timeline_pilih = max(0, len(mf.mif_timeline) - 1)
-        return {'FINISHED'}
 
 classes = [
     hapus_miafile,
     pindah_miafile_ke_atas,
-    pindah_miafile_ke_bawah,
-    hapus_usang
+    pindah_miafile_ke_bawah
 ]
 
 def register():

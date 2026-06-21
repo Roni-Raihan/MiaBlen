@@ -113,16 +113,38 @@ def catat_template_dari_midata(md, mf):
                          tp.file_name = cari_file_mimodel(c, tp)
 
 def catat_part_mimodel(mimodel_jsoin,tp):
-    def baca_part(part, tp, parent_name = ""):
+    #Blender | Model bech (mimodel) | Json mi
+    #    X         Z                     Y      ZXY Model bech -> Json mi YXZ
+    #    Y         X                     X       Json mi YXZ   -> Blender XYZ
+    #    Z         Y                     Z      blender 1 = 16 Mineimator
+
+    def atur_invert_bend(bend, p):
+        sumbu = bend.get("axis", [])
+        invert_atur = bend.get("invert", None)
+        
+        sumbu_invert_mapping = {}
+        if isinstance(sumbu, list):
+            if not invert_atur == None:
+                for i, s in enumerate(sumbu):
+                    sumbu_invert_mapping[s] = invert_atur[i]
+        else:
+            if not invert_atur == None:
+                sumbu_invert_mapping[sumbu] = invert_atur
+                
+            p.bend_invert_x = sumbu_invert_mapping.get("z", False) 
+            p.bend_invert_y = sumbu_invert_mapping.get("x", False)
+            p.bend_invert_z = sumbu_invert_mapping.get("y", False)
+    
+    def baca_part(part, tp, parent_name = "", bend_ofset = (0, 0, 0,)):
         p = tp.model_part.add()
         
         name = part.get("name", "")
         p.name = name
         
         loc = part.get("position", [0, 0, 0])
-        p.loc_x = loc[2] / 16 # x z
-        p.loc_y = loc[0] / 16 # y x
-        p.loc_z = loc[1] / 16 # z y
+        p.loc_x = (loc[2] - bend_ofset[0]) / 16 # x z
+        p.loc_y = (loc[0] - bend_ofset[1]) / 16 # y x
+        p.loc_z = (loc[1] - bend_ofset[2]) / 16 # z y
         
         rot = part.get("rotation", [0, 0, 0])
         p.rot_x = math.radians(rot[2])
@@ -141,11 +163,26 @@ def catat_part_mimodel(mimodel_jsoin,tp):
             p.bend = True
             p.offset_bend = bend.get("offset", 0)
             p.type_bend = bend.get("part", None)
+            
+            atur_invert_bend(bend, p)
+            
+            if p.type_bend in ("right", "left"):
+                bend_ofset = (0, float(p.offset_bend), 0)
+            elif p.type_bend in ("front", "back"):
+                bend_ofset = (float(p.offset_bend), 0, 0)
+            elif p.type_bend in ("upper", "lower"):
+                bend_ofset = (0, 0, float(p.offset_bend))
+            else:
+                bend_ofset = (0, 0, 0)
         else:
             p.bend = False
+            p.bend_invert_x = False
+            p.bend_invert_y = False
+            p.bend_invert_z = False
+            bend_ofset = (0, 0, 0)
         
         for sub in part.get("parts", []):
-            baca_part(sub, tp, name)
+            baca_part(sub, tp, name, bend_ofset)
         
     for root in mimodel_jsoin.get("parts", []):
         baca_part(root, tp, "")
@@ -172,7 +209,7 @@ def generate_empty(context, tm, bend = False):
     
     return obj
 
-def atur_parent(obj, parent_obj, tm, bend = False):
+def atur_parent(obj, parent_obj, tm, bend = False, rpc_loc = (0, 0, 0)):
     name_cosnt = f"id {tm.parent_id}"
     if name_cosnt in obj.constraints: #cek apakah ada constraintnya
         pacon = obj.constraints[name_cosnt]
@@ -195,29 +232,82 @@ def atur_parent(obj, parent_obj, tm, bend = False):
     pacon.use_scale_z = tm.scale_ikut_parent
     
     if tm.type == 'bodypart' and not bend and not tm.part_tunggal:
-        loc = Vector((tm.invers_loc_x, tm.invers_loc_y, tm.invers_loc_z))
+        loc = Vector((tm.invers_loc_x - rpc_loc[0], tm.invers_loc_y - rpc_loc[1], tm.invers_loc_z - rpc_loc[2]))
         rot = Euler((tm.invers_rot_x, tm.invers_rot_y, tm.invers_rot_z), 'XYZ')
         scale = Vector((tm.invers_siz_x, tm.invers_siz_y, tm.invers_siz_z))
     
         mat = Matrix.LocRotScale(loc, rot, scale)
         pacon.inverse_matrix = mat
+        
+    elif tm.type == 'bodypart' and bend:
+        if tm.type_bend in ("right", "left"):
+            loc = Vector((0, float(tm.offset_bend)/16, 0))
+        elif tm.type_bend in ("front", "back"):
+            loc = Vector((float(tm.offset_bend)/16, 0, 0))
+        elif tm.type_bend in ("upper", "lower"):
+            loc = Vector((0, 0, float(tm.offset_bend)/16))
+        else:
+            loc = Vector((0, 0, 0))
+        rot = Euler((0, 0, 0), 'XYZ')
+        scale = Vector((1, 1, 1))
+    
+        mat = Matrix.LocRotScale(loc, rot, scale)
+        pacon.inverse_matrix = mat
     else:
-        loc = Vector((0, 0, 0))
+        loc = Vector((0 - rpc_loc[0], 0 - rpc_loc[1], 0 - rpc_loc[2]))
         rot = Euler((0, 0, 0), 'XYZ')
         scale = Vector((1, 1, 1))
     
         mat = Matrix.LocRotScale(loc, rot, scale)
         pacon.inverse_matrix = mat
     
-def inter(terpola = "LINEAR"):
-    if terpola == 'LINEAR':
-        return "LINEAR"
-    
-    elif terpola == 'instant':
-        return "CONSTANT"
-    
-    else:
-        return "BEZIER"
+def inter(terpola = "linear"):
+    MI_EASING_MAP = {
+        "linear":            {"interpolation": "LINEAR",   "easing": "AUTO"},
+        "instant":           {"interpolation": "CONSTANT",  "easing": "AUTO"},
+        "bezier":            {"interpolation": "BEZIER",  "easing": "AUTO"},
+
+        "easeinsine":        {"interpolation": "SINE",     "easing": "EASE_IN"},
+        "easeoutsine":       {"interpolation": "SINE",     "easing": "EASE_OUT"},
+        "easeinoutsine":     {"interpolation": "SINE",     "easing": "EASE_IN_OUT"},
+
+        "easeinquad":        {"interpolation": "QUAD",     "easing": "EASE_IN"},
+        "easeoutquad":       {"interpolation": "QUAD",     "easing": "EASE_OUT"},
+        "easeinoutquad":     {"interpolation": "QUAD",     "easing": "EASE_IN_OUT"},
+
+        "easeincubic":       {"interpolation": "CUBIC",    "easing": "EASE_IN"},
+        "easeoutcubic":      {"interpolation": "CUBIC",    "easing": "EASE_OUT"},
+        "easeinoutcubic":    {"interpolation": "CUBIC",    "easing": "EASE_IN_OUT"},
+
+        "easeinquart":       {"interpolation": "QUART",    "easing": "EASE_IN"},
+        "easeoutquart":      {"interpolation": "QUART",    "easing": "EASE_OUT"},
+        "easeinoutquart":    {"interpolation": "QUART",    "easing": "EASE_IN_OUT"},
+
+        "easeinquint":       {"interpolation": "QUINT",    "easing": "EASE_IN"},
+        "easeoutquint":      {"interpolation": "QUINT",    "easing": "EASE_OUT"},
+        "easeinoutquint":    {"interpolation": "QUINT",    "easing": "EASE_IN_OUT"},
+
+        "easeinexpo":        {"interpolation": "EXPO",     "easing": "EASE_IN"},
+        "easeoutexpo":       {"interpolation": "EXPO",     "easing": "EASE_OUT"},
+        "easeinoutexpo":     {"interpolation": "EXPO",     "easing": "EASE_IN_OUT"},
+
+        "easeincirc":        {"interpolation": "CIRC",     "easing": "EASE_IN"},
+        "easeoutcirc":       {"interpolation": "CIRC",     "easing": "EASE_OUT"},
+        "easeinoutcirc":     {"interpolation": "CIRC",     "easing": "EASE_IN_OUT"},
+
+        "easeinback":        {"interpolation": "BACK",     "easing": "EASE_IN"},
+        "easeoutback":       {"interpolation": "BACK",     "easing": "EASE_OUT"},
+        "easeinoutback":     {"interpolation": "BACK",     "easing": "EASE_IN_OUT"},
+
+        "easeinbounce":      {"interpolation": "BOUNCE",   "easing": "EASE_IN"},
+        "easeoutbounce":     {"interpolation": "BOUNCE",   "easing": "EASE_OUT"},
+        "easeinoutbounce":   {"interpolation": "BOUNCE",   "easing": "EASE_IN_OUT"},
+
+        "easeinelastic":     {"interpolation": "ELASTIC",  "easing": "EASE_IN"},
+        "easeoutelastic":    {"interpolation": "ELASTIC",  "easing": "EASE_OUT"},
+        "easeinoutelastic":  {"interpolation": "ELASTIC",  "easing": "EASE_IN_OUT"},
+        }
+    return MI_EASING_MAP.get(terpola.strip().lower(), {"interpolation": "BEZIER",  "easing": "AUTO"})
     
 def anim_setup(obj, tm, bend = False):
     #Action
@@ -234,6 +324,7 @@ def anim_setup(obj, tm, bend = False):
     #    Z         Y                     Z      blender 1 = 16 Mineimator
     
     def target_object_keyframe(obj, tm, ch):
+        
         loc_x = ch.fcurves.new("location", index=0)
         loc_y = ch.fcurves.new("location", index=1)
         loc_z = ch.fcurves.new("location", index=2)
@@ -251,22 +342,62 @@ def anim_setup(obj, tm, bend = False):
             for kd in ks.key_data:
                 kd_mapping[kd.name] = kd.nilai
                 
-            transition = inter(kd_mapping.get("TRANSITION", "LINEAR"))
+            transition = inter(kd_mapping.get("TRANSITION", "linear"))
             
-            loc_x.keyframe_points.insert(ks.frame, float(kd_mapping.get("POS_Y", tm.loc_x))/16).interpolation = transition
-            loc_y.keyframe_points.insert(ks.frame, float(kd_mapping.get("POS_X", tm.loc_y))/16).interpolation = transition
-            loc_z.keyframe_points.insert(ks.frame, float(kd_mapping.get("POS_Z", tm.loc_z))/16).interpolation = transition
+            loc_x_kf = loc_x.keyframe_points.insert(ks.frame, float(kd_mapping.get("POS_Y", tm.loc_x))/16)
+            loc_y_kf = loc_y.keyframe_points.insert(ks.frame, float(kd_mapping.get("POS_X", tm.loc_y))/16)
+            loc_z_kf = loc_z.keyframe_points.insert(ks.frame, float(kd_mapping.get("POS_Z", tm.loc_z))/16)
             
-            rot_x.keyframe_points.insert(ks.frame, math.radians(float(kd_mapping.get("ROT_Y", 0)))).interpolation = transition
-            rot_y.keyframe_points.insert(ks.frame, math.radians(float(kd_mapping.get("ROT_X", 0)))).interpolation = transition
-            rot_z.keyframe_points.insert(ks.frame, math.radians(float(kd_mapping.get("ROT_Z", 0)))).interpolation = transition
+            rot_x_kf = rot_x.keyframe_points.insert(ks.frame, math.radians(float(kd_mapping.get("ROT_Y", 0))))
+            rot_y_kf = rot_y.keyframe_points.insert(ks.frame, math.radians(float(kd_mapping.get("ROT_X", 0))))
+            rot_z_kf = rot_z.keyframe_points.insert(ks.frame, math.radians(float(kd_mapping.get("ROT_Z", 0))))
             
-            siz_x.keyframe_points.insert(ks.frame, float(kd_mapping.get("SCA_Y", 1))).interpolation = transition
-            siz_y.keyframe_points.insert(ks.frame, float(kd_mapping.get("SCA_X", 1))).interpolation = transition
-            siz_z.keyframe_points.insert(ks.frame, float(kd_mapping.get("SCA_Z", 1))).interpolation = transition
+            siz_x_kf = siz_x.keyframe_points.insert(ks.frame, float(kd_mapping.get("SCA_Y", 1)))
+            siz_y_kf = siz_y.keyframe_points.insert(ks.frame, float(kd_mapping.get("SCA_X", 1)))
+            siz_z_kf = siz_z.keyframe_points.insert(ks.frame, float(kd_mapping.get("SCA_Z", 1)))
             
-        loc_x.update()
-    
+            for fk in [loc_x_kf, loc_y_kf, loc_z_kf, rot_x_kf, rot_y_kf, rot_z_kf, siz_x_kf, siz_y_kf, siz_z_kf]:
+                fk.interpolation = transition["interpolation"]
+                fk.easing = transition["easing"]
+                
+        for fc in [loc_x, loc_y, loc_z, rot_x, rot_y, rot_z, siz_x, siz_y, siz_z]:
+            fc.update()
+            
+    def bend_object_keyframe(obj, tm, ch):
+        
+        rot_x = ch.fcurves.new("rotation_euler", index=0)
+        rot_y = ch.fcurves.new("rotation_euler", index=1)
+        rot_z = ch.fcurves.new("rotation_euler", index=2)
+        
+        for ks in tm.key_set:
+            kd_mapping = {}
+            for kd in ks.key_data:
+                kd_mapping[kd.name] = kd.nilai
+                
+            transition = inter(kd_mapping.get("TRANSITION", "linear"))
+            
+            if tm.bend_invert_x:
+                rot_x_kf = rot_x.keyframe_points.insert(ks.frame, math.radians(float(kd_mapping.get("BEND_ANGLE_Y", 0))) * -1)
+            else:
+                rot_x_kf = rot_x.keyframe_points.insert(ks.frame, math.radians(float(kd_mapping.get("BEND_ANGLE_Y", 0))))
+                
+            if tm.bend_invert_y:
+                rot_y_kf = rot_y.keyframe_points.insert(ks.frame, math.radians(float(kd_mapping.get("BEND_ANGLE_X", 0))) * -1)
+            else:
+                rot_y_kf = rot_y.keyframe_points.insert(ks.frame, math.radians(float(kd_mapping.get("BEND_ANGLE_X", 0))))
+                
+            if tm.bend_invert_z:
+                rot_z_kf = rot_z.keyframe_points.insert(ks.frame, math.radians(float(kd_mapping.get("BEND_ANGLE_Z", 0))) * -1)
+            else:
+                rot_z_kf = rot_z.keyframe_points.insert(ks.frame, math.radians(float(kd_mapping.get("BEND_ANGLE_Z", 0))))
+            
+            for fk in [rot_x_kf, rot_y_kf, rot_z_kf]:
+                fk.interpolation = transition["interpolation"]
+                fk.easing = transition["easing"]
+                
+        for fc in [rot_x, rot_y, rot_z]:
+            fc.update()
+                
     if not obj.animation_data:
         obj.animation_data_create()
 
@@ -289,6 +420,8 @@ def anim_setup(obj, tm, bend = False):
     
     if not bend:
         target_object_keyframe(obj, tm, ch)
+    else:
+        bend_object_keyframe(obj, tm, ch)
     
 
 class gen_setup(Operator):
@@ -373,6 +506,7 @@ class gen_setup(Operator):
         
         #Buat atau pake object dan sinkronisasi template
         parent_id = {}
+        parent_bend = {}
         for tm in mf.mif_timeline:
             if tm.usang:
                 continue
@@ -405,6 +539,10 @@ class gen_setup(Operator):
                                     tm.invers_siz_x = mp.siz_x
                                     tm.invers_siz_y = mp.siz_y
                                     tm.invers_siz_z = mp.siz_z
+                                    
+                                    tm.bend_invert_x = mp.bend_invert_x
+                                    tm.bend_invert_y = mp.bend_invert_y
+                                    tm.bend_invert_z = mp.bend_invert_z
                                 break
                         break
             
@@ -428,11 +566,15 @@ class gen_setup(Operator):
                 else:
                     obj_bend = generate_empty(context, tm, True)
                     tm.target_bend_object = obj_bend
+                    
+                #Catat bend
+                parent_bend[tm.id] = tm.target_bend_object.name
             
             #sekaligus catat parent
             parent_id[tm.id] = tm.target_object.name
                 
         #mulai oprasi
+        rpc_loc_mapping = {t.id: (t.rpk_loc_x, t.rpk_loc_y, t.rpk_loc_z) for t in mf.mif_timeline if t.rot_point_kostum}
         for tm in mf.mif_timeline:
             if tm.usang:
                 continue
@@ -442,21 +584,35 @@ class gen_setup(Operator):
             #Atur Parent
             if not tm.parent_id == 'root':
                 parent = parent_id.get(tm.parent_id, None)
+                if tm.parent_to_bend:
+                    parent = parent_bend.get(tm.parent_id, parent)
+                    
                 if parent:
+                    if tm.rot_point_ikut_parent or (not tm.part_tunggal and tm.type == "bodypart"):
+                        rpc_loc = rpc_loc_mapping.get(tm.parent_id, (0, 0, 0))
+                    else:
+                        rpc_loc = (0, 0, 0)
                     parent_obj = scene.objects.get(parent)
-                    atur_parent(obj, parent_obj, tm)
+                    atur_parent(obj, parent_obj, tm, False, rpc_loc)
+                    
+            if tm.type == 'bodypart' and tm.bend_part:
+                obj_bend = tm.target_bend_object
+                atur_parent(obj_bend, obj, tm, True)
             
             #atur lokasi dan animasi
             if len(tm.key_set) > 0: #atur animasi
                 anim_setup(obj, tm)
                 
+                if tm.type == 'bodypart' and tm.bend_part:
+                    anim_setup(obj_bend, tm, True)
+                
             else: #atur lokasi buat yang gak punya animasi
                 if obj.animation_data:
                     anim = obj.animation_data
                     anim.action = None
-                obj.location[0] = tm.loc_x
-                obj.location[1] = tm.loc_y
-                obj.location[2] = tm.loc_z
+                obj.location[0] = tm.loc_x / 16
+                obj.location[1] = tm.loc_y / 16
+                obj.location[2] = tm.loc_z / 16
                 
                 obj.rotation_euler[0] = 0
                 obj.rotation_euler[1] = 0
@@ -465,6 +621,22 @@ class gen_setup(Operator):
                 obj.scale[0] = 1
                 obj.scale[1] = 1
                 obj.scale[2] = 1
+                
+                if tm.type == 'bodypart' and tm.bend_part:
+                    if obj_bend.animation_data:
+                        anim = obj_bend.animation_data
+                        anim.action = None
+                    obj_bend.location[0] = tm.loc_x
+                    obj_bend.location[1] = tm.loc_y
+                    obj_bend.location[2] = tm.loc_z
+                
+                    obj_bend.rotation_euler[0] = 0
+                    obj_bend.rotation_euler[1] = 0
+                    obj_bend.rotation_euler[2] = 0
+                
+                    obj_bend.scale[0] = 1
+                    obj_bend.scale[1] = 1
+                    obj_bend.scale[2] = 1
         
         return {'FINISHED'}
 
