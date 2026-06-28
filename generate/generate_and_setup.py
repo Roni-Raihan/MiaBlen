@@ -83,14 +83,15 @@ def catat_template_dari_midata(md, mf):
         
         #cek tahap states
         state_json = c.get("states", None)
-        for st in tp.state:
-            value = state_json.get(st.name, {})
-            for v in value:
-                value_json = v.get("value", "")
-                if st.nilai == value_json:
-                    file = v.get("file", None)
-                    if file:
-                        return file
+        if state_json:
+            for st in tp.state:
+                value = state_json.get(st.name, {})
+                for v in value:
+                    value_json = v.get("value", "")
+                    if st.nilai == value_json:
+                        file = v.get("file", None)
+                        if file:
+                            return file
     
     #cari type caracter
     char_json = md.get("characters", None)
@@ -100,17 +101,25 @@ def catat_template_dari_midata(md, mf):
                 for c in char_json:
                     name = c.get("name", "")
                     if tp.name == name:
-                        tp.file_name = cari_file_mimodel(c, tp)
+                        file_name = cari_file_mimodel(c, tp)
+                        if file_name:
+                            tp.file_name = file_name
+                        else:
+                            print(f"Cant find file aset {name}")
                         
     #cari type spesial block
     spblock_json = md.get("special_blocks", None)
     if spblock_json:
         for tp in mf.mif_template:
-             if tp.type == 'spblock':
-                 for c in spblock_json:
-                     name = c.get("name", "")
-                     if tp.name == name:
-                         tp.file_name = cari_file_mimodel(c, tp)
+            if tp.type == 'spblock':
+                for c in spblock_json:
+                    name = c.get("name", "")
+                    if tp.name == name:
+                        file_name = cari_file_mimodel(c, tp)
+                        if file_name:
+                            tp.file_name = file_name
+                        else:
+                            print(f"Cant find file aset {name}")
 
 def catat_part_mimodel(mimodel_jsoin,tp):
     #Blender | Model bech (mimodel) | Json mi
